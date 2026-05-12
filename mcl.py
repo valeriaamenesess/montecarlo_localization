@@ -504,12 +504,12 @@ class MCLNode(Node):
                 alpha = int(80 + 175 * (j / max(len(trail_list), 1)))
                 cv2.circle(vis_map, (tpx, tpy), 2, (0, alpha, alpha), -1)
 
-        # Partículas azules
+        # Partículas verdes
         for i in range(self.num_particles):
             px, py = self.world_to_pixel(self.particles[i, 0], self.particles[i, 1])
 
             if 0 <= px < self.map_w and 0 <= py < self.map_h:
-                cv2.circle(vis_map, (px, py), 3, (255, 0, 0), -1)
+                cv2.circle(vis_map, (px, py), 3, (0, 255, 0), -1)
 
         # Estimación MCL (rojo)
         if self.mcl_estimate is not None:
@@ -523,17 +523,17 @@ class MCLNode(Node):
                 end_y = int(by - 20 * math.sin(est_theta))
                 cv2.line(vis_map, (bx, by), (end_x, end_y), (0, 0, 255), 2)
 
-        # Pose real por odometría (verde)
+        # Pose real por odometría (azul)
         if self.current_robot_pose is not None:
             rx, ry, rt = self.current_robot_pose
             rpx, rpy = self.world_to_pixel(rx, ry)
 
             if 0 <= rpx < self.map_w and 0 <= rpy < self.map_h:
-                cv2.circle(vis_map, (rpx, rpy), 7, (0, 255, 0), -1)
+                cv2.circle(vis_map, (rpx, rpy), 7, (255, 0, 0), -1)
 
                 rend_x = int(rpx + 22 * math.cos(rt))
                 rend_y = int(rpy - 22 * math.sin(rt))
-                cv2.line(vis_map, (rpx, rpy), (rend_x, rend_y), (0, 255, 0), 2)
+                cv2.line(vis_map, (rpx, rpy), (rend_x, rend_y), (255, 0, 0), 2)
 
         display = cv2.resize(vis_map, (700, 700))
 

@@ -1,69 +1,83 @@
 # Localización Monte Carlo (MCL)
 
-Implementación de un filtro de partículas (Monte Carlo Localization) para localizar un robot diferencial en un mapa 2D conocido, usando datos de odometría y LiDAR provenientes de una simulación en Gazebo.
+Filtro de partículas para localizar un robot en un mapa 2D conocido usando odometría y LiDAR desde Gazebo.
 
-## Descripción
+## Archivos
 
-El proyecto consta de tres componentes principales:
-
-| Archivo | Descripción |
+| Archivo | Qué hace |
 |---|---|
-| `mapa.py` | Genera la imagen del mapa conocido (`mapa_gazebo.png`) con obstáculos y bordes. |
-| `mundo_mcl.sdf` | Mundo de Gazebo que replica el entorno del mapa, con un robot equipado con LiDAR. |
-| `mcl.py` | Nodo ROS 2 que ejecuta el filtro de partículas: recibe `/odom` y `/scan`, puntúa partículas con un Likelihood Field y muestra la estimación en tiempo real. |
+| `mapa.py` | Genera la imagen del mapa (`mapa_gazebo.png`) con obstáculos y bordes |
+| `mundo_mcl.sdf` | Mundo de Gazebo con el robot y LiDAR |
+| `mcl.py` | Nodo que corre el filtro de partículas y muestra la visualización |
 
-### Visualización
+## Colores en la visualización
 
-- **Azul**: partículas del filtro.
-- **Rojo**: estimación MCL (pose estimada).
-- **Verde**: pose real del robot según odometría.
+- 🟢 **Verde** — partículas del filtro
+- 🔴 **Rojo** — estimación MCL (donde cree que está el robot)
+- 🔵 **Azul** — pose real del robot (odometría)
 
-## Requisitos
+## Cómo correrlo
 
-- Python 3
-- ROS 2 (Humble o superior)
-- Ignition Gazebo
-- `ros_gz_bridge`
-- Dependencias de Python: `numpy`, `opencv-python`
+Necesitas **5 terminales**. En cada una corre lo siguiente:
 
-## Ejecución
-
-Cada comando debe ejecutarse en una **terminal separada**.
-
-### 1. Generar el mapa
+### Terminal 1 — Generar el mapa
 
 ```bash
 cd ~/montecarlo_localization
 python3 mapa.py
 ```
 
-### 2. Lanzar la simulación en Gazebo
+### Terminal 2 — Lanzar Gazebo
 
 ```bash
 ign gazebo mundo_mcl.sdf
 ```
 
-### 3. Iniciar el bridge ROS 2 ↔ Gazebo
+### Terminal 3 — Bridge ROS 2 ↔ Gazebo
 
 ```bash
+source /opt/ros/humble/setup.bash
+
 ros2 run ros_gz_bridge parameter_bridge \
   /cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist \
-  /odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry \
-  /scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan
+  /odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry
 ```
 
-### 4. Mover el robot
+### Terminal 4 — Correr el MCL
 
 ```bash
-ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: -0.4}, angular: {z: 0.0}}"
-```
+cd ~/montecarlo_localization
+source /opt/ros/humble/setup.bash
 
-> Puedes ajustar los valores de `linear.x` y `angular.z` para cambiar la velocidad y dirección del robot.
-
-### 5. Ejecutar la localización MCL
-
-```bash
 python3 mcl.py
 ```
 
-Se abrirá una ventana de OpenCV mostrando el mapa con las partículas, la estimación MCL y la pose real del robot en tiempo real.
+Se abre una ventana de OpenCV con el mapa y las partículas en tiempo real.
+
+### Terminal 5 — Mover el robot
+
+Tienes dos opciones:
+
+**Opción A: Teleop (con teclado)**
+
+```bash
+source /opt/ros/humble/setup.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/cmd_vel
+```
+
+**Opción B: Velocidad fija con topic pub**
+
+```bash
+source /opt/ros/humble/setup.bash
+ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}, angular: {z: 0.0}}"
+```
+
+> Puedes cambiar los valores de `x` y `z` para ajustar velocidad y giro.
+
+## Requisitos
+
+- Python 3, `numpy`, `opencv-python`
+- ROS 2 Humble
+- Ignition Gazebo
+- `ros_gz_bridge`
+- `teleop_twist_keyboard` (si usas la opción A)
