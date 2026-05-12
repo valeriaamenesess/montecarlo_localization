@@ -11,14 +11,10 @@ from collections import deque
 
 
 def euler_from_quaternion(x, y, z, w):
-    """
-    Convierte un cuaternión a yaw.
-    Sólo usamos yaw porque estamos trabajando en navegación 2D.
-    """
+    """Convierte un cuaternión a yaw (navegación 2D)."""
     t3 = 2.0 * (w * z + x * y)
     t4 = 1.0 - 2.0 * (y * y + z * z)
-    yaw_z = math.atan2(t3, t4)
-    return yaw_z
+    return math.atan2(t3, t4)
 
 
 class MCLNode(Node):
@@ -29,11 +25,7 @@ class MCLNode(Node):
         # CONFIGURACIÓN DEL MAPA
         # =====================================================
 
-        # Relación metros/pixel.
-        # Mapa 800x800 px, mundo 40x40 m -> 0.05 m/pixel.
-        self.resolution = 0.05
-
-        # Cargar mapa conocido
+        self.resolution = 0.05  # m/pixel
         self.map_img = cv2.imread('mapa_gazebo.png', cv2.IMREAD_GRAYSCALE)
 
         if self.map_img is None:
@@ -42,12 +34,7 @@ class MCLNode(Node):
 
         self.map_h, self.map_w = self.map_img.shape
 
-        # -------------------------------------------------
-        # Likelihood Field:
-        # Mapa de obstáculos difuminado con Gaussiana.
-        # Valor alto = cerca de pared.
-        # Valor bajo = lejos de pared.
-        # -------------------------------------------------
+        # Likelihood Field: mapa de obstáculos difuminado con Gaussiana
         obstacle_binary = (self.map_img < 128).astype(np.float64)
 
         sigma_pixels = 5.0
@@ -77,21 +64,13 @@ class MCLNode(Node):
         self.num_rays_subsample = 60
         self.log_field_floor = -10.0
 
-        # Prior de odometría: evita que el MCL se vaya lejos del robot real.
-        # Si quieres que el rojo se pegue más al verde, baja estos valores.
         self.odom_sigma_xy = 0.45
         self.odom_sigma_theta = 0.6
 
-        # Offset del LiDAR por si estuviera rotado respecto al robot.
-        # Si ves que el MCL se va raro, prueba math.pi, math.pi/2 o -math.pi/2.
         self.lidar_yaw_offset = 0.0
-
-        # Exploración cerca de odometría.
-        # Antes estaba en 0.20; lo bajamos para que el filtro no brinque tanto.
         self.exploration_ratio = 0.10
 
-        # Suavizado temporal de la estimación roja.
-        # Más alto = más estable, pero responde más lento.
+        # Suavizado temporal de la estimación
         self.filtered_estimate = None
         self.smooth_alpha = 0.8
 
@@ -102,7 +81,6 @@ class MCLNode(Node):
         self.current_robot_pose = None
         self.particles_initialized_with_odom = False
 
-        # Inicialización global temporal.
         self.init_particles_global()
 
         # =====================================================
@@ -130,35 +108,19 @@ class MCLNode(Node):
     # =====================================================
 
     def world_to_pixel(self, x, y):
-        """
-        Convierte coordenadas de Gazebo/mundo a pixeles del mapa.
-
-        Gazebo:
-            origen en el centro del mundo.
-            x positivo hacia la derecha.
-            y positivo hacia arriba.
-
-        Imagen:
-            origen en esquina superior izquierda.
-            x positivo hacia la derecha.
-            y positivo hacia abajo.
-        """
+        """Convierte coordenadas del mundo (Gazebo) a pixeles del mapa."""
         px = int((x / self.resolution) + self.map_w / 2.0)
         py = int(self.map_h / 2.0 - (y / self.resolution))
         return px, py
 
     def pixel_to_world(self, px, py):
-        """
-        Convierte pixeles del mapa a coordenadas del mundo/Gazebo.
-        """
+        """Convierte pixeles del mapa a coordenadas del mundo."""
         x = (px - self.map_w / 2.0) * self.resolution
         y = (self.map_h / 2.0 - py) * self.resolution
         return x, y
 
     def is_free_world(self, x, y):
-        """
-        Verifica si una coordenada del mundo cae en zona libre del mapa.
-        """
+        """Verifica si una coordenada del mundo cae en zona libre del mapa."""
         px, py = self.world_to_pixel(x, y)
 
         if px < 0 or px >= self.map_w or py < 0 or py >= self.map_h:
@@ -171,10 +133,7 @@ class MCLNode(Node):
     # =====================================================
 
     def init_particles_global(self):
-        """
-        Inicialización global en zonas libres del mapa.
-        Se usa sólo antes de recibir la primera odometría.
-        """
+        """Inicialización global en zonas libres del mapa (antes de recibir odometría)."""
         self.particles = np.zeros((self.num_particles, 4))
 
         for i in range(self.num_particles):
@@ -191,9 +150,7 @@ class MCLNode(Node):
         self.get_logger().info(f"Muestreadas {self.num_particles} partículas globales iniciales.")
 
     def init_particles_around_pose(self, x, y, theta):
-        """
-        Inicializa partículas alrededor de la pose inicial del robot recibida por /odom.
-        """
+        """Inicializa partículas alrededor de la pose inicial recibida por /odom."""
         self.particles = np.zeros((self.num_particles, 4))
 
         for i in range(self.num_particles):
@@ -223,10 +180,7 @@ class MCLNode(Node):
     # =====================================================
 
     def odom_callback(self, msg):
-        """
-        Recibe odometría y mueve las partículas.
-        Usa dx, dy y dtheta globales para que avance y retroceda correctamente.
-        """
+        """Recibe odometría y mueve las partículas con dx, dy, dtheta globales."""
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
 
@@ -236,7 +190,6 @@ class MCLNode(Node):
         current_odom = np.array([x, y, theta])
         self.current_robot_pose = current_odom
 
-        # Primera lectura de odometría
         if self.prev_odom is None:
             self.prev_odom = current_odom
 
@@ -246,23 +199,18 @@ class MCLNode(Node):
 
             return
 
-        # Diferencias globales de odometría
         dx = current_odom[0] - self.prev_odom[0]
         dy = current_odom[1] - self.prev_odom[1]
 
         dtheta = current_odom[2] - self.prev_odom[2]
         dtheta = math.atan2(math.sin(dtheta), math.cos(dtheta))
 
-        # Movimiento directo en coordenadas globales.
-        # Esto hace que si el robot va hacia atrás, las partículas también retrocedan.
         if abs(dx) > 0.002 or abs(dy) > 0.002 or abs(dtheta) > 0.005:
             self.move_particles_world(dx, dy, dtheta)
             self.prev_odom = current_odom
 
     def move_particles_world(self, dx, dy, dtheta):
-        """
-        Mueve las partículas usando el desplazamiento global de la odometría.
-        """
+        """Mueve partículas usando desplazamiento global de odometría, con detección de colisión."""
         dist = math.hypot(dx, dy)
 
         noise_xy = 0.005 + 0.04 * dist
@@ -282,7 +230,7 @@ class MCLNode(Node):
 
             new_is_free = self.is_free_world(new_x, new_y)
 
-            # Si estaba libre y el movimiento la mete en pared, revertimos.
+            # Si estaba libre y el movimiento la mete en pared, revertir
             if old_is_free and not new_is_free:
                 self.particles[i, 0] = old_x
                 self.particles[i, 1] = old_y
@@ -297,9 +245,7 @@ class MCLNode(Node):
     # =====================================================
 
     def scan_callback(self, msg):
-        """
-        Procesa el LiDAR y asigna puntajes usando Likelihood Field + prior de odometría.
-        """
+        """Procesa LiDAR y asigna puntajes con Likelihood Field + prior de odometría."""
         if self.prev_odom is None:
             return
 
@@ -310,8 +256,7 @@ class MCLNode(Node):
         angles = angles[:n]
         ranges = ranges[:n]
 
-        # Filtrar lecturas válidas.
-        # Quitamos lecturas en range_max porque normalmente indican que no golpearon nada.
+        # Filtrar lecturas válidas
         valid_idx = (
             (ranges > msg.range_min) &
             (ranges < msg.range_max - 0.1) &
@@ -349,14 +294,12 @@ class MCLNode(Node):
                 log_scores[i] = -1e6
                 continue
 
-            # Ángulos globales de los rayos para esta partícula
             global_angles = theta + angles + self.lidar_yaw_offset
 
-            # Proyectar puntos de impacto
+            # Proyectar puntos de impacto del LiDAR
             hit_x = x + ranges * np.cos(global_angles)
             hit_y = y + ranges * np.sin(global_angles)
 
-            # Convertir a pixeles
             hit_px = (hit_x / resolution + half_w).astype(int)
             hit_py = (half_h - hit_y / resolution).astype(int)
 
@@ -378,8 +321,7 @@ class MCLNode(Node):
                 else:
                     log_prob += log_floor
 
-            # Prior de odometría:
-            # evita que el filtro se vaya a una hipótesis muy lejos del robot real.
+            # Prior de odometría: penaliza partículas lejos del robot real
             if self.current_robot_pose is not None:
                 rx, ry, rt = self.current_robot_pose
 
@@ -415,10 +357,7 @@ class MCLNode(Node):
     # =====================================================
 
     def compute_estimate(self):
-        """
-        Calcula la estimación MCL usando promedio ponderado de partículas cercanas
-        a la odometría y aplica suavizado temporal para que el punto rojo no brinque.
-        """
+        """Calcula la estimación MCL con promedio ponderado y suavizado temporal."""
         if self.current_robot_pose is not None:
             rx, ry, rt = self.current_robot_pose
 
@@ -427,7 +366,6 @@ class MCLNode(Node):
                 (self.particles[:, 1] - ry) ** 2
             )
 
-            # Usar partículas cercanas a la odometría.
             nearby = np.where(distances < 1.5)[0]
 
             if len(nearby) > 0:
@@ -445,11 +383,9 @@ class MCLNode(Node):
         else:
             weights = weights / w_sum
 
-        # Promedio ponderado en x, y
         est_x = np.sum(selected[:, 0] * weights)
         est_y = np.sum(selected[:, 1] * weights)
 
-        # Promedio angular ponderado
         sin_sum = np.sum(np.sin(selected[:, 2]) * weights)
         cos_sum = np.sum(np.cos(selected[:, 2]) * weights)
         est_theta = math.atan2(sin_sum, cos_sum)
@@ -480,9 +416,7 @@ class MCLNode(Node):
     # =====================================================
 
     def resample_particles(self):
-        """
-        Low-Variance Systematic Resampling con exploración cerca de odometría.
-        """
+        """Low-Variance Systematic Resampling con exploración cerca de odometría."""
         weights = self.particles[:, 3].copy()
         w_sum = weights.sum()
 
@@ -493,7 +427,6 @@ class MCLNode(Node):
 
         N = self.num_particles
 
-        # Low-Variance Systematic Resampling
         cumsum = np.cumsum(weights)
         cumsum[-1] = 1.0
 
@@ -505,7 +438,7 @@ class MCLNode(Node):
 
         new_particles = self.particles[indices].copy()
 
-        # Ruido post-resampling reducido para que no brinque tanto
+        # Ruido post-resampling
         new_particles[:, 0] += np.random.normal(0, 0.02, N)
         new_particles[:, 1] += np.random.normal(0, 0.02, N)
         new_particles[:, 2] += np.random.normal(0, 0.03, N)
@@ -541,7 +474,7 @@ class MCLNode(Node):
                     1.0 / N
                 ]
 
-        # Verificar que ninguna partícula quede en pared
+        # Revertir partículas que quedaron en pared
         for i in range(N):
             if not self.is_free_world(new_particles[i, 0], new_particles[i, 1]):
                 parent_idx = indices[i] if i < len(indices) else 0
@@ -557,9 +490,7 @@ class MCLNode(Node):
     # =====================================================
 
     def visualize(self):
-        """
-        Dibuja mapa, partículas, estimación MCL y pose real por odometría.
-        """
+        """Dibuja mapa, partículas (azul), estimación MCL (rojo) y odometría (verde)."""
         vis_map = cv2.cvtColor(self.map_img, cv2.COLOR_GRAY2BGR)
 
         # Trail de estimaciones
@@ -580,7 +511,7 @@ class MCLNode(Node):
             if 0 <= px < self.map_w and 0 <= py < self.map_h:
                 cv2.circle(vis_map, (px, py), 3, (255, 0, 0), -1)
 
-        # Estimación MCL roja
+        # Estimación MCL (rojo)
         if self.mcl_estimate is not None:
             est_x, est_y, est_theta = self.mcl_estimate
             bx, by = self.world_to_pixel(est_x, est_y)
@@ -592,7 +523,7 @@ class MCLNode(Node):
                 end_y = int(by - 20 * math.sin(est_theta))
                 cv2.line(vis_map, (bx, by), (end_x, end_y), (0, 0, 255), 2)
 
-        # Pose real por odometría verde
+        # Pose real por odometría (verde)
         if self.current_robot_pose is not None:
             rx, ry, rt = self.current_robot_pose
             rpx, rpy = self.world_to_pixel(rx, ry)
